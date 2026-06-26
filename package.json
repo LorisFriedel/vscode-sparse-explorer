@@ -11,8 +11,12 @@
   "engines": {
     "vscode": "^1.74.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -204,5 +208,9 @@
     "@types/vscode": "^1.74.0",
     "@vscode/vsce": "^3.0.0",
     "typescript": "^5.0.0"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.0.9": true,
+    "keytar@7.9.0": true
   }
 }

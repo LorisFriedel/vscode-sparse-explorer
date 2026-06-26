@@ -47,9 +47,11 @@ Pinned paths are persisted to workspace state. Expanded directories and active f
 
 1. Go to the [Releases](../../releases) page and download `vscode-sparse-explorer-x.x.x.vsix`
 2. Install it:
+
    ```bash
    code --install-extension vscode-sparse-explorer-x.x.x.vsix
    ```
+
    Or: Extensions sidebar → `···` → **Install from VSIX...**
 
 ### Option 2 — Clone and build

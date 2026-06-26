@@ -1,38 +1,44 @@
 import * as vscode from 'vscode';
+import { AdmittedStore } from './AdmittedStore';
 import { ExpandStore } from './ExpandStore';
 import { ExplorerNode, FilteredExplorerProvider } from './FilteredExplorerProvider';
-import { PinStore } from './PinStore';
 import { TabTracker } from './TabTracker';
 
 export function activate(context: vscode.ExtensionContext): void {
   const tabTracker = new TabTracker();
-  const pinStore = new PinStore(context);
+  const admittedStore = new AdmittedStore(context);
   const expandStore = new ExpandStore();
-  const provider = new FilteredExplorerProvider(tabTracker, pinStore, expandStore);
+  const provider = new FilteredExplorerProvider(tabTracker, admittedStore, expandStore);
+
+  // Admit all tabs already open at startup
+  admittedStore.admitAll([...tabTracker.tabPaths]);
+
+  // Auto-admit whenever a new tab is opened
+  tabTracker.onDidOpenTabs(paths => {
+    admittedStore.admitAll(paths);
+  }, null, context.subscriptions);
+
+  // Refresh the tree when tabs change (for the "open" description indicator)
+  tabTracker.onDidChange(() => provider.refresh(), null, context.subscriptions);
+
+  admittedStore.onDidChange(() => provider.refresh(), null, context.subscriptions);
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => provider.refresh()),
+  );
 
   const treeView = vscode.window.createTreeView('sparseExplorer.view', {
     treeDataProvider: provider,
     showCollapseAll: true,
   });
 
-  tabTracker.onDidChange(() => provider.refresh(), null, context.subscriptions);
-  pinStore.onDidChange(() => provider.refresh(), null, context.subscriptions);
-
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeWorkspaceFolders(() => provider.refresh()),
-  );
-
   const cmds: vscode.Disposable[] = [
     vscode.commands.registerCommand('sparseExplorer.refresh', () => {
       provider.refresh();
     }),
 
-    vscode.commands.registerCommand('sparseExplorer.pinItem', (node: ExplorerNode) => {
-      pinStore.pin(node.uri.fsPath);
-    }),
-
-    vscode.commands.registerCommand('sparseExplorer.unpinItem', (node: ExplorerNode) => {
-      pinStore.unpin(node.uri.fsPath);
+    vscode.commands.registerCommand('sparseExplorer.ejectItem', (node: ExplorerNode) => {
+      admittedStore.eject(node.uri.fsPath);
     }),
 
     vscode.commands.registerCommand('sparseExplorer.expandAll', (node: ExplorerNode) => {
@@ -54,7 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
           value: current ?? '',
           prompt: 'Type to filter files within this directory (leave empty to show all)',
         });
-        if (filter === undefined) return; // cancelled
+        if (filter === undefined) return;
         if (filter === '') {
           expandStore.clearFilter(node.uri.fsPath);
         } else {

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { AdmittedStore } from './AdmittedStore';
 import { ExpandStore } from './ExpandStore';
-import { PinStore } from './PinStore';
 import { TabTracker } from './TabTracker';
 import { hasMatchingDescendant, readDir } from './utils/fsUtils';
 import { computeVisiblePaths } from './utils/pathUtils';
@@ -20,7 +20,7 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
 
   constructor(
     private readonly tabTracker: TabTracker,
-    private readonly pinStore: PinStore,
+    private readonly admittedStore: AdmittedStore,
     private readonly expandStore: ExpandStore,
   ) {}
 
@@ -59,10 +59,9 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
         title: 'Open File',
         arguments: [node.uri],
       };
-      const isPinned = this.pinStore.has(node.uri.fsPath);
-      item.contextValue = isPinned ? 'seFile.pinned' : 'seFile.unpinned';
-      if (isPinned) {
-        item.description = 'pinned';
+      item.contextValue = 'seFile';
+      if (this.tabTracker.tabPaths.has(node.uri.fsPath)) {
+        item.description = 'open';
       }
     }
 
@@ -104,11 +103,7 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
 
   private async _getFilteredChildren(dirPath: string): Promise<ExplorerNode[]> {
     const roots = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
-    const visible = computeVisiblePaths(
-      this.tabTracker.tabPaths,
-      this.pinStore.pinnedPaths,
-      roots,
-    );
+    const visible = computeVisiblePaths(this.admittedStore.paths, roots);
 
     const entries = await readDir(dirPath);
     const nodes: ExplorerNode[] = [];

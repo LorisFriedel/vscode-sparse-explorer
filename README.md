@@ -1,6 +1,6 @@
 # VSCode Sparse Explorer
 
-A VS Code extension that replaces the noise of a full file tree with a focused view showing only what you're actively working on: files with open editor tabs, and files or directories you've explicitly pinned. Everything else is hidden.
+A VS Code extension that cuts through the noise of a full file tree with a focused view showing only the files you've touched. Files appear automatically when you open a tab and stay visible until you explicitly remove them — no pinning required.
 
 A dedicated activity bar icon opens the view alongside the default Explorer — both coexist, so you can switch freely.
 
@@ -8,9 +8,9 @@ A dedicated activity bar icon opens the view alongside the default Explorer — 
 
 ## Features
 
-- **Tab-driven visibility** — files appear automatically when you open a tab and disappear when you close it (unless pinned)
-- **Pin any file or directory** — keep it visible regardless of tab state; pins survive restarts
-- **Expand a directory** — temporarily reveal all its descendants; collapses back to your filtered view without losing pin state
+- **Automatic admission** — files appear when you open a tab and stay visible after the tab closes
+- **Explicit removal** — remove a file from the view with one click; it returns if you open it again
+- **Expand a directory** — temporarily reveal all its descendants to browse or open files
 - **Filter within an expanded directory** — type a string to recursively narrow the expanded view by filename
 - **Multi-root workspace support** — works with both single-folder and `.code-workspace` multi-root setups
 
@@ -25,8 +25,9 @@ Open the **Sparse Explorer** view from the activity bar (funnel icon).
 | Action | How |
 |---|---|
 | Open a file | Click it |
-| Pin a file (keep visible after tab closes) | Hover → click the pin icon, or right-click → **Pin** |
-| Unpin a file | Hover → click the pin icon, or right-click → **Unpin** |
+| Remove a file from the view | Hover → click `×`, or right-click → **Remove from View** |
+
+Files removed from the view will reappear automatically the next time you open a tab for them.
 
 ### Directories
 
@@ -35,9 +36,9 @@ Open the **Sparse Explorer** view from the activity bar (funnel icon).
 | Show all files in a directory | Hover → click **Show All Files**, or right-click → **Show All Files** |
 | Filter within an expanded directory | Hover → click the search icon, or right-click → **Filter Files...** |
 | Clear an active filter | Hover → click **Clear Filter**, or right-click → **Clear Filter** |
-| Return to the filtered view | Hover → click **Collapse to Filtered View**, or right-click → **Collapse to Filtered View** |
+| Return to the sparse view | Hover → click **Collapse to Filtered View**, or right-click → **Collapse to Filtered View** |
 
-Pinned paths are persisted to workspace state. Expanded directories and active filters reset when VS Code closes.
+Admitted file paths are persisted to workspace state. Expanded directories and active filters reset when VS Code closes.
 
 ---
 
@@ -86,8 +87,8 @@ Press `F5` in VS Code to open an **Extension Development Host** — a second VS 
 ```
 src/
   extension.ts                  — entry point, command registration
-  TabTracker.ts                 — reads open tabs from vscode.window.tabGroups
-  PinStore.ts                   — persists pinned paths to workspaceState
+  TabTracker.ts                 — reads open tabs from vscode.window.tabGroups; emits newly-opened paths
+  AdmittedStore.ts              — persists admitted paths to workspaceState; handles eject
   ExpandStore.ts                — session-only expanded dirs and per-dir filters
   FilteredExplorerProvider.ts   — TreeDataProvider: the core tree rendering logic
   utils/

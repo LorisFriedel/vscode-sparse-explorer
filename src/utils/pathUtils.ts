@@ -1,13 +1,12 @@
 import * as path from 'path';
 
 export function computeVisiblePaths(
-  tabPaths: Set<string>,
-  pinnedPaths: Set<string>,
+  admittedPaths: Set<string>,
   workspaceRoots: string[],
 ): Set<string> {
   const visible = new Set<string>();
 
-  for (const itemPath of [...tabPaths, ...pinnedPaths]) {
+  for (const itemPath of admittedPaths) {
     const root = workspaceRoots.find(
       r => itemPath === r || itemPath.startsWith(r + path.sep),
     );

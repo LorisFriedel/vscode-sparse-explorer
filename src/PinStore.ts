@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-const STORAGE_KEY = 'explorerFilter.pinned';
+const STORAGE_KEY = 'sparseExplorer.pinned';
 
 export class PinStore {
   private _onDidChange = new vscode.EventEmitter<void>();

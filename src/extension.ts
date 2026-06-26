@@ -10,7 +10,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const expandStore = new ExpandStore();
   const provider = new FilteredExplorerProvider(tabTracker, pinStore, expandStore);
 
-  const treeView = vscode.window.createTreeView('explorerFilter.view', {
+  const treeView = vscode.window.createTreeView('sparseExplorer.view', {
     treeDataProvider: provider,
     showCollapseAll: true,
   });
@@ -23,30 +23,30 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const cmds: vscode.Disposable[] = [
-    vscode.commands.registerCommand('explorerFilter.refresh', () => {
+    vscode.commands.registerCommand('sparseExplorer.refresh', () => {
       provider.refresh();
     }),
 
-    vscode.commands.registerCommand('explorerFilter.pinItem', (node: ExplorerNode) => {
+    vscode.commands.registerCommand('sparseExplorer.pinItem', (node: ExplorerNode) => {
       pinStore.pin(node.uri.fsPath);
     }),
 
-    vscode.commands.registerCommand('explorerFilter.unpinItem', (node: ExplorerNode) => {
+    vscode.commands.registerCommand('sparseExplorer.unpinItem', (node: ExplorerNode) => {
       pinStore.unpin(node.uri.fsPath);
     }),
 
-    vscode.commands.registerCommand('explorerFilter.expandAll', (node: ExplorerNode) => {
+    vscode.commands.registerCommand('sparseExplorer.expandAll', (node: ExplorerNode) => {
       expandStore.expand(node.uri.fsPath);
       provider.refresh();
     }),
 
-    vscode.commands.registerCommand('explorerFilter.collapseToFiltered', (node: ExplorerNode) => {
+    vscode.commands.registerCommand('sparseExplorer.collapseToFiltered', (node: ExplorerNode) => {
       expandStore.collapse(node.uri.fsPath);
       provider.refresh();
     }),
 
     vscode.commands.registerCommand(
-      'explorerFilter.filterExpanded',
+      'sparseExplorer.filterExpanded',
       async (node: ExplorerNode) => {
         const current = expandStore.getFilter(node.uri.fsPath);
         const filter = await vscode.window.showInputBox({
@@ -64,12 +64,12 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
 
-    vscode.commands.registerCommand('explorerFilter.clearFilter', (node: ExplorerNode) => {
+    vscode.commands.registerCommand('sparseExplorer.clearFilter', (node: ExplorerNode) => {
       expandStore.clearFilter(node.uri.fsPath);
       provider.refresh();
     }),
 
-    vscode.commands.registerCommand('explorerFilter.revealInExplorer', (node: ExplorerNode) => {
+    vscode.commands.registerCommand('sparseExplorer.revealInExplorer', (node: ExplorerNode) => {
       void vscode.commands.executeCommand('revealInExplorer', node.uri);
     }),
   ];

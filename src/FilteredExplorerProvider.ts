@@ -38,19 +38,19 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
         : vscode.TreeItemCollapsibleState.Collapsed;
 
       if (node.isWorkspaceRoot) {
-        item.contextValue = 'efDir.workspaceRoot';
+        item.contextValue = 'seDir.workspaceRoot';
       } else if (isExpanded) {
         item.contextValue = this.expandStore.hasFilter(node.uri.fsPath)
-          ? 'efDir.expandedFiltered'
-          : 'efDir.expanded';
+          ? 'seDir.expandedFiltered'
+          : 'seDir.expanded';
         const filter = this.expandStore.getFilter(node.uri.fsPath);
         if (filter) {
           item.description = `filter: ${filter}`;
         }
       } else if (node.inExpandedContext) {
-        item.contextValue = 'efDir.inExpanded';
+        item.contextValue = 'seDir.inExpanded';
       } else {
-        item.contextValue = 'efDir.filtered';
+        item.contextValue = 'seDir.filtered';
       }
     } else {
       item.collapsibleState = vscode.TreeItemCollapsibleState.None;
@@ -60,7 +60,7 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
         arguments: [node.uri],
       };
       const isPinned = this.pinStore.has(node.uri.fsPath);
-      item.contextValue = isPinned ? 'efFile.pinned' : 'efFile.unpinned';
+      item.contextValue = isPinned ? 'seFile.pinned' : 'seFile.unpinned';
       if (isPinned) {
         item.description = 'pinned';
       }

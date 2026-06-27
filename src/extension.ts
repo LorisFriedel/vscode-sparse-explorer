@@ -73,6 +73,18 @@ export function activate(context: vscode.ExtensionContext): void {
       );
   }
 
+  async function revealActiveFile(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+    const uri = editor.document.uri;
+    if (uri.scheme !== 'file') return;
+    if (!vscode.workspace.getWorkspaceFolder(uri)) return;
+    if (!admittedStore.has(uri.fsPath)) return;
+    await treeView
+      .reveal({ uri, isDirectory: false, isWorkspaceRoot: false }, { select: true, focus: false })
+      .then(() => undefined, () => undefined);
+  }
+
   async function promptFilter(dirPath: string): Promise<void> {
     const current = expandStore.getFilter(dirPath);
     const filter = await vscode.window.showInputBox({
@@ -137,6 +149,7 @@ export function activate(context: vscode.ExtensionContext): void {
       updateExpandContext();
       provider.refresh();
       await collapseAllRows();
+      await revealActiveFile();
     }),
 
     vscode.commands.registerCommand('sparseExplorer.filterExpanded', async () => {
@@ -169,6 +182,7 @@ export function activate(context: vscode.ExtensionContext): void {
       updateExpandContext();
       provider.refresh();
       await collapseAllRows();
+      await revealActiveFile();
     }),
 
     vscode.commands.registerCommand('sparseExplorer.filterDir', async (node?: ExplorerNode) => {

@@ -37,7 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const treeView = vscode.window.createTreeView('sparseExplorer.view', {
     treeDataProvider: provider,
-    showCollapseAll: true,
+    showCollapseAll: false,
   });
 
   function updateExpandContext(): void {

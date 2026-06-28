@@ -73,10 +73,23 @@ export function activate(context: vscode.ExtensionContext): void {
       );
   }
 
+  function activeTabFileUri(): vscode.Uri | undefined {
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    if (!tab) return undefined;
+    const input = tab.input;
+    if (
+      input instanceof vscode.TabInputText ||
+      input instanceof vscode.TabInputCustom ||
+      input instanceof vscode.TabInputNotebook
+    ) {
+      return (input as vscode.TabInputText | vscode.TabInputCustom | vscode.TabInputNotebook).uri;
+    }
+    return undefined;
+  }
+
   async function revealActiveFile(): Promise<void> {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
-    const uri = editor.document.uri;
+    const uri = activeTabFileUri();
+    if (!uri) return;
     if (uri.scheme !== 'file') return;
     if (!vscode.workspace.getWorkspaceFolder(uri)) return;
     if (!admittedStore.has(uri.fsPath)) return;
@@ -202,20 +215,22 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   ];
 
+  function revealActiveFileIfAdmitted(): void {
+    const uri = activeTabFileUri();
+    if (!uri) return;
+    if (uri.scheme !== 'file') return;
+    if (!vscode.workspace.getWorkspaceFolder(uri)) return;
+    if (!admittedStore.has(uri.fsPath)) return;
+    if (expandStore.hasAnyExpanded()) return;
+    void treeView
+      .reveal({ uri, isDirectory: false, isWorkspaceRoot: false }, { select: true, focus: false })
+      .then(() => undefined, () => undefined);
+  }
+
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(editor => {
-      if (!editor) return;
-      const uri = editor.document.uri;
-      if (uri.scheme !== 'file') return;
-      if (!vscode.workspace.getWorkspaceFolder(uri)) return;
-      if (!admittedStore.has(uri.fsPath)) return;
-      if (expandStore.hasAnyExpanded()) return;
-      void Promise.resolve(
-        treeView.reveal(
-          { uri, isDirectory: false, isWorkspaceRoot: false },
-          { select: true, focus: false },
-        ),
-      ).catch(() => undefined);
+    vscode.window.onDidChangeActiveTextEditor(() => revealActiveFileIfAdmitted()),
+    vscode.window.tabGroups.onDidChangeTabs(e => {
+      if (e.changed.some(t => t.isActive)) revealActiveFileIfAdmitted();
     }),
   );
 

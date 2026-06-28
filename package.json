@@ -241,12 +241,16 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npm run compile && vsce package"
+    "package": "npm run compile && vsce package",
+    "test": "jest"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.74.0",
     "@vscode/vsce": "^3.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.0.0"
   },
   "allowScripts": {

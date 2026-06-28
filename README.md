@@ -105,6 +105,17 @@ resources/
 | `npm run compile` | One-shot TypeScript build |
 | `npm run watch` | Rebuild on file changes |
 | `npm run package` | Compile and produce a `.vsix` installable package |
+| `npm test` | Run the unit test suite |
+
+### Tests
+
+The unit tests cover the pure-logic modules (`computeVisiblePaths`, `ExpandStore`, `readDir`/`hasMatchingDescendant`) and the tree provider's `getTreeItem` and `getChildren` logic with a mocked VS Code API. They run in plain Node.js without an Extension Development Host:
+
+```bash
+npm test
+```
+
+Full VS Code UI behaviour (reveal, collapse-all, tab tracking) can only be verified by loading the extension via `F5` and exercising it manually.
 
 ## Credits
 

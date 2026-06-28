@@ -18,8 +18,8 @@ export class TabTracker implements vscode.Disposable {
         this._onDidChange.fire();
 
         const opened = e.opened
-          .filter(t => t.input instanceof vscode.TabInputText)
-          .map(t => (t.input as vscode.TabInputText).uri.fsPath);
+          .filter(t => t.input instanceof vscode.TabInputText || t.input instanceof vscode.TabInputCustom || t.input instanceof vscode.TabInputNotebook)
+          .map(t => (t.input as vscode.TabInputText | vscode.TabInputCustom | vscode.TabInputNotebook).uri.fsPath);
         if (opened.length > 0) {
           this._onDidOpenTabs.fire(opened);
         }
@@ -37,8 +37,8 @@ export class TabTracker implements vscode.Disposable {
     this._tabPaths = new Set(
       vscode.window.tabGroups.all
         .flatMap(g => g.tabs)
-        .filter(t => t.input instanceof vscode.TabInputText)
-        .map(t => (t.input as vscode.TabInputText).uri.fsPath),
+        .filter(t => t.input instanceof vscode.TabInputText || t.input instanceof vscode.TabInputCustom || t.input instanceof vscode.TabInputNotebook)
+        .map(t => (t.input as vscode.TabInputText | vscode.TabInputCustom | vscode.TabInputNotebook).uri.fsPath),
     );
   }
 

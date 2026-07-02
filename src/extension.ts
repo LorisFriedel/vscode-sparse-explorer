@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { AdmittedStore } from './AdmittedStore';
 import { ExpandStore } from './ExpandStore';
@@ -9,6 +10,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const admittedStore = new AdmittedStore(context);
   const expandStore = new ExpandStore();
   const provider = new FilteredExplorerProvider(tabTracker, admittedStore, expandStore);
+
+  let clipboard: { uri: vscode.Uri; mode: 'cut' | 'copy' } | undefined;
 
   // Admit all tabs already open at startup
   admittedStore.admitAll([...tabTracker.tabPaths]);
@@ -51,6 +54,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   updateExpandContext();
+  void vscode.commands.executeCommand('setContext', 'sparseExplorer.hasClipboard', false);
 
   // VS Code ignores a changed TreeItem.collapsibleState on an already-rendered row
   // and offers no API to collapse a single node. So expansion must be driven through
@@ -96,6 +100,39 @@ export function activate(context: vscode.ExtensionContext): void {
     await treeView
       .reveal({ uri, isDirectory: false, isWorkspaceRoot: false }, { select: true, focus: false })
       .then(() => undefined, () => undefined);
+  }
+
+  async function fileExists(uri: vscode.Uri): Promise<boolean> {
+    try {
+      await vscode.workspace.fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function revealNode(node: ExplorerNode): Promise<void> {
+    await treeView
+      .reveal(node, { select: true, focus: false })
+      .then(() => undefined, () => undefined);
+  }
+
+  // Mirrors the built-in Explorer's paste-conflict naming: "name copy.ext", "name copy 2.ext", ...
+  async function uniqueDestUri(dir: string, baseName: string): Promise<vscode.Uri> {
+    const ext = path.extname(baseName);
+    const stem = ext ? baseName.slice(0, -ext.length) : baseName;
+    let candidate = baseName;
+    let n = 1;
+    while (await fileExists(vscode.Uri.file(path.join(dir, candidate)))) {
+      candidate = n === 1 ? `${stem} copy${ext}` : `${stem} copy ${n}${ext}`;
+      n++;
+    }
+    return vscode.Uri.file(path.join(dir, candidate));
+  }
+
+  function revealInOS(node?: ExplorerNode): void {
+    if (!node) return;
+    void vscode.commands.executeCommand('revealFileInOS', node.uri);
   }
 
   async function promptFilter(dirPath: string): Promise<void> {
@@ -212,6 +249,217 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('sparseExplorer.revealInExplorer', (node: ExplorerNode) => {
       void vscode.commands.executeCommand('revealInExplorer', node.uri);
+    }),
+
+    // --- File operations (parity with the built-in Explorer) ---
+
+    vscode.commands.registerCommand('sparseExplorer.copyPath', (node?: ExplorerNode) => {
+      if (!node) return;
+      void vscode.commands.executeCommand('copyFilePath', node.uri);
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.copyRelativePath', (node?: ExplorerNode) => {
+      if (!node) return;
+      void vscode.commands.executeCommand('copyRelativePath', node.uri);
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.newFile', async (node?: ExplorerNode) => {
+      if (!node || !node.isDirectory) return;
+      const dirPath = node.uri.fsPath;
+      const name = await vscode.window.showInputBox({
+        prompt: 'New file name',
+        placeHolder: 'example.ts',
+        validateInput: v => (v.trim() === '' ? 'Name required' : undefined),
+      });
+      if (!name) return;
+      const newUri = vscode.Uri.file(path.join(dirPath, name));
+      if (await fileExists(newUri)) {
+        void vscode.window.showErrorMessage(`'${name}' already exists.`);
+        return;
+      }
+      try {
+        await vscode.workspace.fs.writeFile(newUri, new Uint8Array());
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Failed to create file: ${(err as Error).message}`);
+        return;
+      }
+      admittedStore.admit(newUri.fsPath);
+      const doc = await vscode.workspace.openTextDocument(newUri);
+      await vscode.window.showTextDocument(doc);
+      await revealNode({ uri: newUri, isDirectory: false, isWorkspaceRoot: false });
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.newFolder', async (node?: ExplorerNode) => {
+      if (!node || !node.isDirectory) return;
+      const dirPath = node.uri.fsPath;
+      const name = await vscode.window.showInputBox({
+        prompt: 'New folder name',
+        placeHolder: 'my-folder',
+        validateInput: v => (v.trim() === '' ? 'Name required' : undefined),
+      });
+      if (!name) return;
+      const newUri = vscode.Uri.file(path.join(dirPath, name));
+      if (await fileExists(newUri)) {
+        void vscode.window.showErrorMessage(`'${name}' already exists.`);
+        return;
+      }
+      try {
+        await vscode.workspace.fs.createDirectory(newUri);
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Failed to create folder: ${(err as Error).message}`);
+        return;
+      }
+      admittedStore.admit(newUri.fsPath);
+      await revealNode({ uri: newUri, isDirectory: true, isWorkspaceRoot: false });
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.rename', async (node?: ExplorerNode) => {
+      if (!node) return;
+      const oldUri = node.uri;
+      const dirPath = path.dirname(oldUri.fsPath);
+      const oldName = path.basename(oldUri.fsPath);
+      const extIndex = !node.isDirectory ? oldName.lastIndexOf('.') : -1;
+      const name = await vscode.window.showInputBox({
+        prompt: 'New name',
+        value: oldName,
+        valueSelection: [0, extIndex > 0 ? extIndex : oldName.length],
+      });
+      if (!name || name === oldName) return;
+      const newUri = vscode.Uri.file(path.join(dirPath, name));
+      try {
+        await vscode.workspace.fs.rename(oldUri, newUri, { overwrite: false });
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Failed to rename: ${(err as Error).message}`);
+        return;
+      }
+      admittedStore.renamePrefix(oldUri.fsPath, newUri.fsPath);
+      expandStore.renamePrefix(oldUri.fsPath, newUri.fsPath);
+      updateExpandContext();
+      await revealNode({ uri: newUri, isDirectory: node.isDirectory, isWorkspaceRoot: false });
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.delete', async (node?: ExplorerNode) => {
+      if (!node) return;
+      const fsPath = node.uri.fsPath;
+      const label = path.basename(fsPath);
+      const confirm = await vscode.window.showWarningMessage(
+        `Are you sure you want to delete '${label}'?`,
+        { modal: true },
+        'Move to Trash',
+      );
+      if (confirm !== 'Move to Trash') return;
+      try {
+        await vscode.workspace.fs.delete(node.uri, { recursive: true, useTrash: true });
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Failed to delete: ${(err as Error).message}`);
+        return;
+      }
+      admittedStore.ejectPrefix(fsPath);
+      expandStore.collapsePrefix(fsPath);
+      updateExpandContext();
+    }),
+
+    // --- Open variants ---
+
+    vscode.commands.registerCommand('sparseExplorer.openToSide', (node?: ExplorerNode) => {
+      if (!node || node.isDirectory) return;
+      void vscode.commands.executeCommand('vscode.open', node.uri, {
+        viewColumn: vscode.ViewColumn.Beside,
+      });
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.openWith', (node?: ExplorerNode) => {
+      if (!node || node.isDirectory) return;
+      void vscode.commands.executeCommand('explorer.openWith', node.uri);
+    }),
+
+    // --- Compare ---
+
+    vscode.commands.registerCommand('sparseExplorer.selectForCompare', (node?: ExplorerNode) => {
+      if (!node || node.isDirectory) return;
+      void vscode.commands.executeCommand('selectForCompare', node.uri);
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.compareWithSelected', (node?: ExplorerNode) => {
+      if (!node || node.isDirectory) return;
+      void vscode.commands.executeCommand('compareFiles', node.uri);
+    }),
+
+    // --- Cut / copy / paste ---
+
+    vscode.commands.registerCommand('sparseExplorer.cut', (node?: ExplorerNode) => {
+      if (!node) return;
+      clipboard = { uri: node.uri, mode: 'cut' };
+      void vscode.commands.executeCommand('setContext', 'sparseExplorer.hasClipboard', true);
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.copy', (node?: ExplorerNode) => {
+      if (!node) return;
+      clipboard = { uri: node.uri, mode: 'copy' };
+      void vscode.commands.executeCommand('setContext', 'sparseExplorer.hasClipboard', true);
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.paste', async (node?: ExplorerNode) => {
+      if (!node || !clipboard) return;
+      const source = clipboard.uri;
+      const targetDir = node.isDirectory ? node.uri.fsPath : path.dirname(node.uri.fsPath);
+
+      let sourceIsDirectory: boolean;
+      try {
+        const stat = await vscode.workspace.fs.stat(source);
+        sourceIsDirectory = (stat.type & vscode.FileType.Directory) !== 0;
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Failed to paste: ${(err as Error).message}`);
+        clipboard = undefined;
+        void vscode.commands.executeCommand('setContext', 'sparseExplorer.hasClipboard', false);
+        return;
+      }
+
+      const destUri = await uniqueDestUri(targetDir, path.basename(source.fsPath));
+      try {
+        if (clipboard.mode === 'copy') {
+          await vscode.workspace.fs.copy(source, destUri, { overwrite: false });
+        } else {
+          await vscode.workspace.fs.rename(source, destUri, { overwrite: false });
+        }
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Failed to paste: ${(err as Error).message}`);
+        return;
+      }
+
+      if (clipboard.mode === 'cut') {
+        admittedStore.renamePrefix(source.fsPath, destUri.fsPath);
+        expandStore.renamePrefix(source.fsPath, destUri.fsPath);
+        clipboard = undefined;
+        void vscode.commands.executeCommand('setContext', 'sparseExplorer.hasClipboard', false);
+      } else {
+        admittedStore.admit(destUri.fsPath);
+      }
+      // A pasted directory would otherwise render as an empty-looking row until the
+      // user manually expands it — show its contents immediately, same spirit as
+      // newFile/newFolder making new items visible right away.
+      if (sourceIsDirectory) {
+        expandStore.expand(destUri.fsPath);
+      }
+      updateExpandContext();
+      provider.refresh();
+      await revealNode({ uri: destUri, isDirectory: sourceIsDirectory, isWorkspaceRoot: false });
+    }),
+
+    // --- OS integration ---
+
+    vscode.commands.registerCommand('sparseExplorer.revealInOSMac', revealInOS),
+    vscode.commands.registerCommand('sparseExplorer.revealInOSWindows', revealInOS),
+    vscode.commands.registerCommand('sparseExplorer.revealInOSLinux', revealInOS),
+
+    vscode.commands.registerCommand('sparseExplorer.openInIntegratedTerminal', (node?: ExplorerNode) => {
+      if (!node || !node.isDirectory) return;
+      void vscode.commands.executeCommand('openInIntegratedTerminal', node.uri);
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.findInFolder', (node?: ExplorerNode) => {
+      if (!node || !node.isDirectory) return;
+      void vscode.commands.executeCommand('filesExplorer.findInFolder', node.uri);
     }),
   ];
 

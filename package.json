@@ -102,6 +102,96 @@
         "title": "Clear Filter",
         "icon": "$(clear-all)",
         "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.newFile",
+        "title": "New File...",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.newFolder",
+        "title": "New Folder...",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.copyPath",
+        "title": "Copy Path",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.rename",
+        "title": "Rename...",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.delete",
+        "title": "Delete",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.openToSide",
+        "title": "Open to the Side",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.openWith",
+        "title": "Open With...",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.selectForCompare",
+        "title": "Select for Compare",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.compareWithSelected",
+        "title": "Compare with Selected",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.cut",
+        "title": "Cut",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.copy",
+        "title": "Copy",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.paste",
+        "title": "Paste",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.revealInOSMac",
+        "title": "Reveal in Finder",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.revealInOSWindows",
+        "title": "Reveal in File Explorer",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.revealInOSLinux",
+        "title": "Open Containing Folder",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.openInIntegratedTerminal",
+        "title": "Open in Integrated Terminal",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.findInFolder",
+        "title": "Find in Folder...",
+        "category": "Sparse Explorer"
       }
     ],
     "menus": {
@@ -187,6 +277,96 @@
           "command": "sparseExplorer.revealInExplorer",
           "when": "view == sparseExplorer.view",
           "group": "2_reveal@1"
+        },
+        {
+          "command": "sparseExplorer.openToSide",
+          "when": "view == sparseExplorer.view && viewItem == 'seFile'",
+          "group": "0_open@1"
+        },
+        {
+          "command": "sparseExplorer.openWith",
+          "when": "view == sparseExplorer.view && viewItem == 'seFile'",
+          "group": "0_open@2"
+        },
+        {
+          "command": "sparseExplorer.newFile",
+          "when": "view == sparseExplorer.view && viewItem =~ /^seDir/",
+          "group": "0_new@1"
+        },
+        {
+          "command": "sparseExplorer.newFolder",
+          "when": "view == sparseExplorer.view && viewItem =~ /^seDir/",
+          "group": "0_new@2"
+        },
+        {
+          "command": "sparseExplorer.selectForCompare",
+          "when": "view == sparseExplorer.view && viewItem == 'seFile'",
+          "group": "1_compare@1"
+        },
+        {
+          "command": "sparseExplorer.compareWithSelected",
+          "when": "view == sparseExplorer.view && viewItem == 'seFile'",
+          "group": "1_compare@2"
+        },
+        {
+          "command": "sparseExplorer.cut",
+          "when": "view == sparseExplorer.view",
+          "group": "2_clipboard@1"
+        },
+        {
+          "command": "sparseExplorer.copy",
+          "when": "view == sparseExplorer.view",
+          "group": "2_clipboard@2"
+        },
+        {
+          "command": "sparseExplorer.paste",
+          "when": "view == sparseExplorer.view && sparseExplorer.hasClipboard",
+          "group": "2_clipboard@3"
+        },
+        {
+          "command": "sparseExplorer.copyPath",
+          "when": "view == sparseExplorer.view",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "sparseExplorer.copyRelativePath",
+          "when": "view == sparseExplorer.view",
+          "group": "3_copy@2"
+        },
+        {
+          "command": "sparseExplorer.rename",
+          "when": "view == sparseExplorer.view",
+          "group": "4_modify@1"
+        },
+        {
+          "command": "sparseExplorer.delete",
+          "when": "view == sparseExplorer.view",
+          "group": "4_modify@2"
+        },
+        {
+          "command": "sparseExplorer.revealInOSMac",
+          "when": "view == sparseExplorer.view && isMac",
+          "group": "5_os@1"
+        },
+        {
+          "command": "sparseExplorer.revealInOSWindows",
+          "when": "view == sparseExplorer.view && isWindows",
+          "group": "5_os@1"
+        },
+        {
+          "command": "sparseExplorer.revealInOSLinux",
+          "when": "view == sparseExplorer.view && isLinux",
+          "group": "5_os@1"
+        },
+        {
+          "command": "sparseExplorer.openInIntegratedTerminal",
+          "when": "view == sparseExplorer.view && viewItem =~ /^seDir/",
+          "group": "5_os@2"
+        },
+        {
+          "command": "sparseExplorer.findInFolder",
+          "when": "view == sparseExplorer.view && viewItem =~ /^seDir/",
+          "group": "5_os@3"
         }
       ],
       "commandPalette": [
@@ -228,6 +408,78 @@
         },
         {
           "command": "sparseExplorer.clearFilterDir",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.newFile",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.newFolder",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.rename",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.delete",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.openToSide",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.openWith",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.selectForCompare",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.compareWithSelected",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.cut",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.copy",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.paste",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.revealInOSMac",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.revealInOSWindows",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.revealInOSLinux",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.openInIntegratedTerminal",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.findInFolder",
           "when": "false"
         }
       ]

@@ -495,7 +495,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "npm run compile && vsce package",
-    "test": "jest"
+    "test": "jest",
+    "release": "scripts/release.sh"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

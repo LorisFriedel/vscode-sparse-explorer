@@ -99,7 +99,7 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
           item.contextValue = hasFilter ? 'seDir.expandedFiltered' : 'seDir.expanded';
         }
         const filter = this.expandStore.getFilter(fsPath);
-        if (filter) item.description = `filter: ${filter}`;
+        item.description = filter ? `● filter: ${filter}` : '●';
       } else if (node.isWorkspaceRoot) {
         item.contextValue = 'seDir.workspaceRoot';
       } else if (scope.expanded) {

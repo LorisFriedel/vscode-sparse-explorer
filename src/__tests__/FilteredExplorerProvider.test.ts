@@ -50,7 +50,14 @@ describe('getTreeItem — contextValue', () => {
     expandStore.setFilter('/root/src', 'test');
     const item = makeProvider(expandStore).getTreeItem(node('/root/src'));
     expect(item.contextValue).toBe('seDir.expandedFiltered');
-    expect(item.description).toBe('filter: test');
+    expect(item.description).toBe('● filter: test');
+  });
+
+  test('expanded dir with no filter gets a bullet description', () => {
+    const expandStore = new ExpandStore();
+    expandStore.expand('/root/src');
+    const item = makeProvider(expandStore).getTreeItem(node('/root/src'));
+    expect(item.description).toBe('●');
   });
 
   test('child dir of an expanded dir gets seDir.inExpanded', () => {

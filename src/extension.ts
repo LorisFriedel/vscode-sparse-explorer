@@ -4,6 +4,7 @@ import { AdmittedStore } from './AdmittedStore';
 import { ExpandStore } from './ExpandStore';
 import { ExplorerNode, FilteredExplorerProvider } from './FilteredExplorerProvider';
 import { TabTracker } from './TabTracker';
+import { log, resetClock } from './debugLog';
 
 export function activate(context: vscode.ExtensionContext): void {
   const tabTracker = new TabTracker();
@@ -68,13 +69,33 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
+  // expandAll/collapseToFiltered/expandDir/collapseDir each run an async chain of
+  // collapseAllRows/refresh/reveal calls. A fast repeat click (there's no visual feedback
+  // while the chain is in flight) invokes the command again before the first call has
+  // rendered anything, so the two chains interleave: two full collapse/refresh/reveal
+  // cycles race each other and VS Code ends up doing several back-to-back render passes
+  // when it catches up, which reads as flicker. Serialize these commands so a repeat
+  // invocation while one is still running is a no-op.
+  let treeOpInFlight = false;
+  async function withTreeOpGuard(fn: () => Promise<void>): Promise<void> {
+    if (treeOpInFlight) return;
+    treeOpInFlight = true;
+    try {
+      await fn();
+    } finally {
+      treeOpInFlight = false;
+    }
+  }
+
   async function collapseAllRows(): Promise<void> {
+    log('collapseAllRows: executing collapseAll command');
     await vscode.commands
       .executeCommand('workbench.actions.treeView.sparseExplorer.view.collapseAll')
       .then(
         () => undefined,
         () => undefined,
       );
+    log('collapseAllRows: collapseAll command resolved');
   }
 
   function activeTabFileUri(): vscode.Uri | undefined {
@@ -97,9 +118,11 @@ export function activate(context: vscode.ExtensionContext): void {
     if (uri.scheme !== 'file') return;
     if (!vscode.workspace.getWorkspaceFolder(uri)) return;
     if (!admittedStore.has(uri.fsPath)) return;
+    log(`revealActiveFile: revealing ${uri.fsPath}`);
     await treeView
       .reveal({ uri, isDirectory: false, isWorkspaceRoot: false }, { select: true, focus: false })
       .then(() => undefined, () => undefined);
+    log('revealActiveFile: done');
   }
 
   async function fileExists(uri: vscode.Uri): Promise<boolean> {
@@ -191,15 +214,28 @@ export function activate(context: vscode.ExtensionContext): void {
     // --- Title-bar (whole tree) ---
 
     vscode.commands.registerCommand('sparseExplorer.expandAll', async () => {
-      await revealExpanded(expandRoots());
+      await withTreeOpGuard(async () => {
+        await revealExpanded(expandRoots());
+      });
     }),
 
     vscode.commands.registerCommand('sparseExplorer.collapseToFiltered', async () => {
-      expandStore.collapseAll();
-      updateExpandContext();
-      provider.refresh();
-      await collapseAllRows();
-      await revealActiveFile();
+      await withTreeOpGuard(async () => {
+        resetClock();
+        log('collapseToFiltered: start');
+        // Fold the rows first, while the tree's content still matches what's on screen.
+        // Mutating expandStore before this and refreshing would re-fetch children for
+        // still-expanded rows under the new (filtered) scope, flashing the wrong content
+        // for a frame before the fold catches up (collapsibleState changes are ignored on
+        // already-rendered rows, so only collapseAllRows() actually folds them — see
+        // CLAUDE.md's TreeView gotcha #1).
+        await collapseAllRows();
+        expandStore.collapseAll();
+        updateExpandContext();
+        provider.refresh();
+        await revealActiveFile();
+        log('collapseToFiltered: end');
+      });
     }),
 
     vscode.commands.registerCommand('sparseExplorer.filterExpanded', async () => {
@@ -220,19 +256,28 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('sparseExplorer.expandDir', async (node?: ExplorerNode) => {
       if (!node || !node.isDirectory) return;
-      expandStore.expand(node.uri.fsPath);
-      updateExpandContext();
-      provider.refresh();
-      await revealExpanded([node]);
+      await withTreeOpGuard(async () => {
+        expandStore.expand(node.uri.fsPath);
+        updateExpandContext();
+        provider.refresh();
+        await revealExpanded([node]);
+      });
     }),
 
     vscode.commands.registerCommand('sparseExplorer.collapseDir', async (node?: ExplorerNode) => {
       if (!node || !node.isDirectory) return;
-      expandStore.collapse(node.uri.fsPath);
-      updateExpandContext();
-      provider.refresh();
-      await collapseAllRows();
-      await revealActiveFile();
+      await withTreeOpGuard(async () => {
+        resetClock();
+        log(`collapseDir: start, target=${node.uri.fsPath}`);
+        // See the comment in collapseToFiltered: fold rows before mutating state/refreshing
+        // to avoid a flash of the new (filtered) children in a still-expanded row.
+        await collapseAllRows();
+        expandStore.collapse(node.uri.fsPath);
+        updateExpandContext();
+        provider.refresh();
+        await revealActiveFile();
+        log('collapseDir: end');
+      });
     }),
 
     vscode.commands.registerCommand('sparseExplorer.filterDir', async (node?: ExplorerNode) => {

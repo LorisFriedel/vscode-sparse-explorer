@@ -5,6 +5,7 @@ import { ExpandStore } from './ExpandStore';
 import { TabTracker } from './TabTracker';
 import { hasMatchingDescendant, readDir } from './utils/fsUtils';
 import { computeVisiblePaths } from './utils/pathUtils';
+import { log } from './debugLog';
 
 export interface ExplorerNode {
   uri: vscode.Uri;
@@ -28,6 +29,7 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
   ) {}
 
   refresh(): void {
+    log('refresh() fired');
     this._onDidChangeTreeData.fire();
   }
 
@@ -75,6 +77,7 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
     const item = new vscode.TreeItem(node.uri);
     const fsPath = node.uri.fsPath;
     const scope = this._scopeFor(fsPath);
+    log(`getTreeItem ${fsPath} scope=${JSON.stringify(scope)}`);
 
     // Stable id: VS Code keys an item's identity (and its remembered expansion
     // state) on this. Keeping it stable lets an expanded directory survive a refresh
@@ -99,7 +102,7 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
           item.contextValue = hasFilter ? 'seDir.expandedFiltered' : 'seDir.expanded';
         }
         const filter = this.expandStore.getFilter(fsPath);
-        if (filter) item.description = `filter: ${filter}`;
+        item.description = filter ? `● filter: ${filter}` : '●';
       } else if (node.isWorkspaceRoot) {
         item.contextValue = 'seDir.workspaceRoot';
       } else if (scope.expanded) {
@@ -120,6 +123,9 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
       }
     }
 
+    log(
+      `  -> collapsibleState=${item.collapsibleState} contextValue=${item.contextValue} description=${item.description}`,
+    );
     return item;
   }
 
@@ -144,11 +150,15 @@ export class FilteredExplorerProvider implements vscode.TreeDataProvider<Explore
     return this._childrenOf(node.uri.fsPath);
   }
 
-  private _childrenOf(dirPath: string): Promise<ExplorerNode[]> {
+  private async _childrenOf(dirPath: string): Promise<ExplorerNode[]> {
     const scope = this._scopeFor(dirPath);
-    return scope.expanded
-      ? this._getExpandedChildren(dirPath, scope.filter)
-      : this._getFilteredChildren(dirPath);
+    const result = scope.expanded
+      ? await this._getExpandedChildren(dirPath, scope.filter)
+      : await this._getFilteredChildren(dirPath);
+    log(
+      `getChildren ${dirPath} scope=${JSON.stringify(scope)} -> ${result.length} entries: [${result.map(n => path.basename(n.uri.fsPath)).join(', ')}]`,
+    );
+    return result;
   }
 
   private async _getFilteredChildren(dirPath: string): Promise<ExplorerNode[]> {

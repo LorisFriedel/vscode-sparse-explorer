@@ -34,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      updateTitle();
       updateExpandContext();
       provider.refresh();
     }),
@@ -43,6 +44,17 @@ export function activate(context: vscode.ExtensionContext): void {
     treeDataProvider: provider,
     showCollapseAll: false,
   });
+
+  // Mirrors the built-in Explorer, which shows the workspace/folder name in place of
+  // the view's registered name.
+  function updateTitle(): void {
+    treeView.title = vscode.workspace.name;
+  }
+  updateTitle();
+
+  function primaryRootPath(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
 
   function updateExpandContext(): void {
     const folders = vscode.workspace.workspaceFolders ?? [];
@@ -153,6 +165,52 @@ export function activate(context: vscode.ExtensionContext): void {
     return vscode.Uri.file(path.join(dir, candidate));
   }
 
+  async function createNewFile(dirPath: string): Promise<void> {
+    const name = await vscode.window.showInputBox({
+      prompt: 'New file name',
+      placeHolder: 'example.ts',
+      validateInput: v => (v.trim() === '' ? 'Name required' : undefined),
+    });
+    if (!name) return;
+    const newUri = vscode.Uri.file(path.join(dirPath, name));
+    if (await fileExists(newUri)) {
+      void vscode.window.showErrorMessage(`'${name}' already exists.`);
+      return;
+    }
+    try {
+      await vscode.workspace.fs.writeFile(newUri, new Uint8Array());
+    } catch (err) {
+      void vscode.window.showErrorMessage(`Failed to create file: ${(err as Error).message}`);
+      return;
+    }
+    admittedStore.admit(newUri.fsPath);
+    const doc = await vscode.workspace.openTextDocument(newUri);
+    await vscode.window.showTextDocument(doc);
+    await revealNode({ uri: newUri, isDirectory: false, isWorkspaceRoot: false });
+  }
+
+  async function createNewFolder(dirPath: string): Promise<void> {
+    const name = await vscode.window.showInputBox({
+      prompt: 'New folder name',
+      placeHolder: 'my-folder',
+      validateInput: v => (v.trim() === '' ? 'Name required' : undefined),
+    });
+    if (!name) return;
+    const newUri = vscode.Uri.file(path.join(dirPath, name));
+    if (await fileExists(newUri)) {
+      void vscode.window.showErrorMessage(`'${name}' already exists.`);
+      return;
+    }
+    try {
+      await vscode.workspace.fs.createDirectory(newUri);
+    } catch (err) {
+      void vscode.window.showErrorMessage(`Failed to create folder: ${(err as Error).message}`);
+      return;
+    }
+    admittedStore.admit(newUri.fsPath);
+    await revealNode({ uri: newUri, isDirectory: true, isWorkspaceRoot: false });
+  }
+
   function revealInOS(node?: ExplorerNode): void {
     if (!node) return;
     void vscode.commands.executeCommand('revealFileInOS', node.uri);
@@ -212,6 +270,18 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     // --- Title-bar (whole tree) ---
+
+    vscode.commands.registerCommand('sparseExplorer.newFileRoot', async () => {
+      const dirPath = primaryRootPath();
+      if (!dirPath) return;
+      await createNewFile(dirPath);
+    }),
+
+    vscode.commands.registerCommand('sparseExplorer.newFolderRoot', async () => {
+      const dirPath = primaryRootPath();
+      if (!dirPath) return;
+      await createNewFolder(dirPath);
+    }),
 
     vscode.commands.registerCommand('sparseExplorer.expandAll', async () => {
       await withTreeOpGuard(async () => {
@@ -310,52 +380,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('sparseExplorer.newFile', async (node?: ExplorerNode) => {
       if (!node || !node.isDirectory) return;
-      const dirPath = node.uri.fsPath;
-      const name = await vscode.window.showInputBox({
-        prompt: 'New file name',
-        placeHolder: 'example.ts',
-        validateInput: v => (v.trim() === '' ? 'Name required' : undefined),
-      });
-      if (!name) return;
-      const newUri = vscode.Uri.file(path.join(dirPath, name));
-      if (await fileExists(newUri)) {
-        void vscode.window.showErrorMessage(`'${name}' already exists.`);
-        return;
-      }
-      try {
-        await vscode.workspace.fs.writeFile(newUri, new Uint8Array());
-      } catch (err) {
-        void vscode.window.showErrorMessage(`Failed to create file: ${(err as Error).message}`);
-        return;
-      }
-      admittedStore.admit(newUri.fsPath);
-      const doc = await vscode.workspace.openTextDocument(newUri);
-      await vscode.window.showTextDocument(doc);
-      await revealNode({ uri: newUri, isDirectory: false, isWorkspaceRoot: false });
+      await createNewFile(node.uri.fsPath);
     }),
 
     vscode.commands.registerCommand('sparseExplorer.newFolder', async (node?: ExplorerNode) => {
       if (!node || !node.isDirectory) return;
-      const dirPath = node.uri.fsPath;
-      const name = await vscode.window.showInputBox({
-        prompt: 'New folder name',
-        placeHolder: 'my-folder',
-        validateInput: v => (v.trim() === '' ? 'Name required' : undefined),
-      });
-      if (!name) return;
-      const newUri = vscode.Uri.file(path.join(dirPath, name));
-      if (await fileExists(newUri)) {
-        void vscode.window.showErrorMessage(`'${name}' already exists.`);
-        return;
-      }
-      try {
-        await vscode.workspace.fs.createDirectory(newUri);
-      } catch (err) {
-        void vscode.window.showErrorMessage(`Failed to create folder: ${(err as Error).message}`);
-        return;
-      }
-      admittedStore.admit(newUri.fsPath);
-      await revealNode({ uri: newUri, isDirectory: true, isWorkspaceRoot: false });
+      await createNewFolder(node.uri.fsPath);
     }),
 
     vscode.commands.registerCommand('sparseExplorer.rename', async (node?: ExplorerNode) => {

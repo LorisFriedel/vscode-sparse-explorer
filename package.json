@@ -114,6 +114,18 @@
         "category": "Sparse Explorer"
       },
       {
+        "command": "sparseExplorer.newFileRoot",
+        "title": "New File...",
+        "icon": "$(new-file)",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.newFolderRoot",
+        "title": "New Folder...",
+        "icon": "$(new-folder)",
+        "category": "Sparse Explorer"
+      },
+      {
         "command": "sparseExplorer.copyPath",
         "title": "Copy Path",
         "category": "Sparse Explorer"
@@ -197,29 +209,39 @@
     "menus": {
       "view/title": [
         {
+          "command": "sparseExplorer.newFileRoot",
+          "when": "view == sparseExplorer.view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sparseExplorer.newFolderRoot",
+          "when": "view == sparseExplorer.view",
+          "group": "navigation@2"
+        },
+        {
           "command": "sparseExplorer.filterExpanded",
           "when": "view == sparseExplorer.view && sparseExplorer.hasExpanded && !sparseExplorer.rootHasFilter",
-          "group": "navigation@1"
+          "group": "navigation@3"
         },
         {
           "command": "sparseExplorer.clearFilter",
           "when": "view == sparseExplorer.view && sparseExplorer.rootHasFilter",
-          "group": "navigation@1"
+          "group": "navigation@3"
         },
         {
           "command": "sparseExplorer.expandAll",
           "when": "view == sparseExplorer.view && !sparseExplorer.hasExpanded",
-          "group": "navigation@2"
+          "group": "navigation@4"
         },
         {
           "command": "sparseExplorer.collapseToFiltered",
           "when": "view == sparseExplorer.view && sparseExplorer.hasExpanded",
-          "group": "navigation@2"
+          "group": "navigation@4"
         },
         {
           "command": "sparseExplorer.refresh",
           "when": "view == sparseExplorer.view",
-          "group": "navigation@3"
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
@@ -416,6 +438,14 @@
         },
         {
           "command": "sparseExplorer.newFolder",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.newFileRoot",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.newFolderRoot",
           "when": "false"
         },
         {

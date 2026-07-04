@@ -526,6 +526,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.tabGroups.onDidChangeTabs(e => {
       if (e.changed.some(t => t.isActive)) revealActiveFileIfAdmitted();
     }),
+    // Tab switches while this view isn't visible are dropped by the treeView.visible
+    // guard above (VS Code can't reveal into a hidden tree). Re-sync once it's shown
+    // again, otherwise the highlight stays stuck on whatever was active last time it
+    // was visible.
+    treeView.onDidChangeVisibility(e => {
+      if (e.visible) revealActiveFileIfAdmitted();
+    }),
   );
 
   context.subscriptions.push(treeView, tabTracker, ...cmds);

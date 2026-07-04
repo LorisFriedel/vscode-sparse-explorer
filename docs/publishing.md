@@ -121,12 +121,13 @@ This tells Azure to trust GitHub Actions tokens issued for this repository.
    - **Organisation**: `EricMountain`
    - **Repository**: `vscode-sparse-explorer`
    - **Entity type**: `Tag`
-   - **Based on tag**: `v*`
+   - **Based on tag**: `*`
    - **Name**: e.g. `github-actions-tag-push`
 4. Save.
 
-The subject claim this produces (`repo:EricMountain/vscode-sparse-explorer:ref:refs/tags/v*`)
-scopes the credential to tag-push workflows only, not every workflow run.
+The subject claim this produces (`repo:EricMountain/vscode-sparse-explorer:ref:refs/tags/*`)
+scopes the credential to tag-push workflows only, not every workflow run. Using `v*` here
+appears unreliable for managed identity federated credentials — `*` is safer.
 
 ### Step 3 — Create an Azure DevOps organization linked to your tenant
 

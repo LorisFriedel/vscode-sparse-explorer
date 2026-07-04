@@ -89,7 +89,16 @@ The CI workflow (`.github/workflows/ci.yml`) already packages and creates a GitH
 Release on a `v*` tag push. These steps extend it to also publish to the Marketplace
 using **workload identity federation** — no long-lived secrets required.
 
-### Step 1 — Create a User-Assigned Managed Identity in Azure
+### Step 1 — Create a GitHub environment
+
+In the repository on GitHub: **Settings → Environments → New environment** → name it
+`production`. No additional configuration needed.
+
+This environment is referenced by the release job so that GitHub issues a stable,
+predictable OIDC subject claim (`...environment:production`) that Azure can match exactly
+— managed identity federated credentials do not support wildcard subjects.
+
+### Step 2 — Create a User-Assigned Managed Identity in Azure
 
 1. Open the [Azure portal](https://portal.azure.com) and sign in.
 2. Search for **Managed Identities** → **Create**.
@@ -111,7 +120,7 @@ using **workload identity federation** — no long-lived secrets required.
    - Members: select `sparse-explorer-publisher`
    - Save
 
-### Step 2 — Add federated credentials
+### Step 3 — Add federated credentials
 
 This tells Azure to trust GitHub Actions tokens issued for this repository.
 
@@ -120,16 +129,16 @@ This tells Azure to trust GitHub Actions tokens issued for this repository.
 3. Fill in:
    - **Organisation**: `EricMountain`
    - **Repository**: `vscode-sparse-explorer`
-   - **Entity type**: `Tag`
-   - **Based on tag**: `*`
+   - **Entity type**: `Environment`
+   - **Environment name**: `production`
    - **Name**: e.g. `github-actions-tag-push`
 4. Save.
 
-The subject claim this produces (`repo:EricMountain/vscode-sparse-explorer:ref:refs/tags/*`)
-scopes the credential to tag-push workflows only, not every workflow run. Using `v*` here
-appears unreliable for managed identity federated credentials — `*` is safer.
+The subject claim this produces (`repo:EricMountain/vscode-sparse-explorer:environment:production`)
+is an exact string — no wildcard needed. Managed identity federated credentials do not
+support wildcard subjects; using a GitHub environment sidesteps this limitation entirely.
 
-### Step 3 — Create an Azure DevOps organization linked to your tenant
+### Step 4 — Create an Azure DevOps organization linked to your tenant
 
 The Marketplace member search resolves identities through an Azure DevOps organization's
 connected directory. Without this, the managed identity cannot be found regardless of
@@ -145,7 +154,7 @@ which identifier you use.
 You do not need to use Azure DevOps for CI — the organization exists only so the
 Marketplace can look up identities in your tenant.
 
-### Step 4 — Store the IDs as GitHub Actions secrets
+### Step 5 — Store the IDs as GitHub Actions secrets
 
 These are configuration values, not credentials, but GitHub secrets is the standard
 place to store per-repo parameters.
@@ -154,11 +163,11 @@ In the repository on GitHub: **Settings → Secrets and variables → Actions �
 
 | Secret name | Value |
 |---|---|
-| `AZURE_CLIENT_ID` | Client ID from Step 1 |
-| `AZURE_TENANT_ID` | Tenant ID from Step 1 |
-| `AZURE_SUBSCRIPTION_ID` | Subscription ID from Step 1 |
+| `AZURE_CLIENT_ID` | Client ID from Step 2 |
+| `AZURE_TENANT_ID` | Tenant ID from Step 2 |
+| `AZURE_SUBSCRIPTION_ID` | Subscription ID from Step 2 |
 
-### Step 5 — Authorize the managed identity as a publisher member
+### Step 6 — Authorize the managed identity as a publisher member
 
 The Marketplace member search requires the identity's VSSPS resource ID — a separate
 identifier from the Azure Client ID or name. Retrieve it with a temporary GitHub Actions
@@ -169,6 +178,11 @@ workflow.
 - **Entity type**: Branch
 - **Branch**: `main`
 - **Name**: e.g. `github-actions-main`
+
+> Note: if you have already created the `production` environment (Step 2), you can instead
+> add a temporary credential with **Entity type: Environment**, **Environment name:
+> production**, run the lookup workflow from a tag push, and skip the cleanup — this
+> temporary credential becomes the permanent one.
 
 **b) Create a temporary workflow** `.github/workflows/lookup-mi-id.yml`:
 
@@ -220,6 +234,7 @@ The job currently ends after creating the GitHub Release. Extend it as follows:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: write
       id-token: write        # required for OIDC token exchange

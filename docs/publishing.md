@@ -95,7 +95,7 @@ using **workload identity federation** — no long-lived secrets required.
 2. Search for **Managed Identities** → **Create**.
 3. Fill in:
    - **Subscription**: any subscription you have access to.
-   - **Resource group**: create a new one (e.g. `vscode-extension-publishing`) or reuse an existing one.
+   - **Resource group**: create a new one (e.g. `VSCodeExtensions`) or reuse an existing one.
    - **Region**: any.
    - **Name**: e.g. `sparse-explorer-publisher`.
 4. Click **Review + create** → **Create**.
@@ -103,6 +103,13 @@ using **workload identity federation** — no long-lived secrets required.
    - **Client ID** (a GUID)
    - **Tenant ID** (a GUID, shown under Overview → Directory (tenant) ID)
    - **Subscription ID** (shown at the top of any subscription page)
+6. Assign the identity a **Reader** role on the subscription so that `az login` can list
+   subscriptions during the workflow:
+   - Go to **Subscriptions** → select your subscription → **Access control (IAM)** →
+     **Add role assignment**
+   - Role: **Reader**
+   - Members: select `sparse-explorer-publisher`
+   - Save
 
 ### Step 2 — Add federated credentials
 
@@ -121,11 +128,21 @@ This tells Azure to trust GitHub Actions tokens issued for this repository.
 The subject claim this produces (`repo:EricMountain/vscode-sparse-explorer:ref:refs/tags/v*`)
 scopes the credential to tag-push workflows only, not every workflow run.
 
-### Step 3 — Authorize the managed identity as a publisher member
+### Step 3 — Create an Azure DevOps organization linked to your tenant
 
-1. Go to https://marketplace.visualstudio.com/manage → publisher `eric-mountain` → **Members** → **Add**.
-2. Search by the managed identity's **Client ID** (the GUID from Step 1).
-3. Set role to **Owner** and save.
+The Marketplace member search resolves identities through an Azure DevOps organization's
+connected directory. Without this, the managed identity cannot be found regardless of
+which identifier you use.
+
+1. Go to https://dev.azure.com and sign in with the same Microsoft account used for the
+   Marketplace publisher.
+2. Click **Create new organization**.
+3. When prompted for the directory, select the **Azure AD tenant** where the managed
+   identity was created (not a personal Microsoft account directory). The organization
+   name doesn't matter.
+
+You do not need to use Azure DevOps for CI — the organization exists only so the
+Marketplace can look up identities in your tenant.
 
 ### Step 4 — Store the IDs as GitHub Actions secrets
 
@@ -139,6 +156,54 @@ In the repository on GitHub: **Settings → Secrets and variables → Actions �
 | `AZURE_CLIENT_ID` | Client ID from Step 1 |
 | `AZURE_TENANT_ID` | Tenant ID from Step 1 |
 | `AZURE_SUBSCRIPTION_ID` | Subscription ID from Step 1 |
+
+### Step 5 — Authorize the managed identity as a publisher member
+
+The Marketplace member search requires the identity's VSSPS resource ID — a separate
+identifier from the Azure Client ID or name. Retrieve it with a temporary GitHub Actions
+workflow.
+
+**a) Add a temporary federated credential** on the managed identity for branch pushes:
+
+- **Entity type**: Branch
+- **Branch**: `main`
+- **Name**: e.g. `github-actions-main`
+
+**b) Create a temporary workflow** `.github/workflows/lookup-mi-id.yml`:
+
+```yaml
+name: Lookup managed identity VSSPS ID
+
+on:
+  workflow_dispatch:
+
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Get VSSPS identity ID
+        run: |
+          az rest \
+            -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798
+```
+
+**c)** Push/PR to `main`, then trigger it from **Actions → Lookup managed identity VSSPS ID →
+Run workflow**. The `id` field in the JSON output is the VSSPS resource ID.
+
+**d)** Go to https://marketplace.visualstudio.com/manage → publisher `eric-mountain` →
+**Members → Add**, enter that ID, set role to **Owner**, and save.
+
+**e) Clean up**: delete `lookup-mi-id.yml` and the `github-actions-temp` federated
+credential — neither is needed after this.
 
 ---
 

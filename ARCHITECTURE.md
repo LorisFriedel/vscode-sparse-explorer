@@ -2,7 +2,7 @@
 
 ## What it does
 
-Sparse Explorer is a VS Code tree-view extension that shows a focused subset of the workspace: only files you have opened (or that were open at startup), plus the ancestor directories needed to reach them. Files stay in the view after their tab is closed. You can remove them explicitly, or temporarily reveal an entire directory's contents.
+Sparse Explorer is a VS Code tree-view extension that shows a focused subset of the workspace: only files you have opened (or that were open at startup), plus the ancestor directories needed to reach them. Files stay in the view after their tab is closed. You can remove them explicitly, or temporarily reveal an entire directory's contents. You can also **explicitly add a folder** so it always shows every file it contains — persisted across restarts — even if none of its files have been opened.
 
 ---
 
@@ -12,10 +12,12 @@ Sparse Explorer is a VS Code tree-view extension that shows a focused subset of 
 extension.ts          — activation, event wiring, command registration
 TabTracker            — watches vscode.window.tabGroups; emits newly-opened paths
 AdmittedStore         — the persisted set of file paths shown in filtered mode
+AdmittedFolderStore   — the persisted set of folders shown in full (always-expanded)
 ExpandStore           — session-only set of expanded directories + per-dir filters
 FilteredExplorerProvider — TreeDataProvider; the single source of truth for what the tree shows
-utils/pathUtils.ts    — derives visible ancestor dirs from admitted file paths
+utils/pathUtils.ts    — derives visible ancestor dirs from admitted file/folder paths
 utils/fsUtils.ts      — async readdir + recursive filter-match helper
+utils/excludeUtils.ts — files.exclude glob matcher (hides .DS_Store/.git/… in expanded views)
 ```
 
 There is no database or back-end. All state lives in memory during the session, except for `AdmittedStore` which writes to `workspaceState` so it survives restarts.
@@ -37,6 +39,26 @@ _admittedPaths: Set<string>
 ```
 
 `onDidChange` is the signal to rebuild the tree; `extension.ts` wires it to `provider.refresh()`.
+
+### AdmittedFolderStore (`src/AdmittedFolderStore.ts`)
+
+A persisted `Set<string>` of folders the user has **explicitly added** (via the built-in Explorer's right-click menu, a folder row's "Add Folder (Show All Files)" action, or a paste/rename that carried an added folder along). Like `AdmittedStore` it writes to `workspaceState`, so entries survive restarts.
+
+```
+_folders: Set<string>
+  add(path)          — add, persist, fire onDidChange
+  remove(path)       — remove, persist, fire onDidChange
+  removePrefix(path) — drop path + any admitted folder nested under it (for deletes)
+  renamePrefix(a, b) — rewrite path + nested admitted folders (for renames/moves)
+  has(path)          — synchronous membership check
+```
+
+It plays two roles in the provider:
+
+1. **Expansion** — a folder here is treated as expanded, so its subtree renders every file it contains. `_scopeFor` returns `expanded: true` when `AdmittedFolderStore.has()` is true for a directory or any ancestor (in addition to `ExpandStore.isExpanded`).
+2. **Visibility anchor** — an added folder (and its ancestors) must appear even when none of its files have been opened. `_getFilteredChildren` therefore unions `AdmittedFolderStore.paths` into the input to `computeVisiblePaths`.
+
+The distinction from `ExpandStore`: `ExpandStore` is the *session-only, transient* "Show All Files" toggle; `AdmittedFolderStore` is the *persisted, explicit* "keep this folder fully shown" set. A folder can be in both; the admitted (persisted) state wins for rendering the `contextValue`.
 
 ### ExpandStore (`src/ExpandStore.ts`)
 
@@ -129,7 +151,7 @@ Result: a minimal tree. Only the paths you need to reach your files appear.
 
 ### Expanded mode — `_getExpandedChildren`
 
-Reads the directory from disk with `readDir()` and returns **all** entries, ignoring `admittedStore` entirely. If a filter string is active, directories are only included if `hasMatchingDescendant` finds at least one filename containing the filter string (case-insensitive), and files are only included if their name contains the filter.
+Reads the directory from disk with `readDir()` and returns entries, ignoring `admittedStore` entirely. Entries matching the workspace's `files.exclude` (via `_excludePredicateFor` — `.DS_Store`, `.git`, etc.) are dropped first, so a "Show All Files" / added-folder view mirrors what the built-in Explorer shows rather than dumping OS/VCS noise. If a filter string is active, directories are only included if `hasMatchingDescendant` finds at least one (non-excluded) filename containing the filter string (case-insensitive), and files are only included if their name contains the filter.
 
 `inExpandedContext: true` propagates down through directory nodes so that nested `getChildren` calls also use `_getExpandedChildren`.
 
@@ -137,12 +159,16 @@ Reads the directory from disk with `readDir()` and returns **all** entries, igno
 
 | Node type | `collapsibleState` | `contextValue` |
 |-----------|--------------------|----------------|
-| Workspace root, expanded | `Expanded` | `seDir.workspaceRoot.expanded` or `seDir.workspaceRoot.expandedFiltered` |
+| Workspace root, admitted folder | `Expanded` | `seDir.workspaceRoot.admitted` or `seDir.workspaceRoot.admitted.filtered` |
+| Workspace root, expanded (session) | `Expanded` | `seDir.workspaceRoot.expanded` or `seDir.workspaceRoot.expandedFiltered` |
 | Workspace root, not expanded | `Collapsed` | `seDir.workspaceRoot` |
-| Directory, expanded | `Expanded` | `seDir.expanded` or `seDir.expandedFiltered` |
+| Directory, admitted folder | `Expanded` | `seDir.admitted` or `seDir.admitted.filtered` |
+| Directory, expanded (session) | `Expanded` | `seDir.expanded` or `seDir.expandedFiltered` |
 | Directory, in-expanded context | `Collapsed` | `seDir.inExpanded` |
 | Directory, filtered | `Collapsed` | `seDir.filtered` |
 | File | `None` | `seFile` |
+
+An admitted folder outranks a concurrent session expansion when choosing the `contextValue` (so its menu shows "Remove from View" rather than "Collapse to Filtered View"). The `.filtered` variants carry a session filter from `ExpandStore`, which can be layered onto an admitted folder.
 
 The `contextValue` strings drive all toolbar and context-menu `when` conditions in `package.json`.
 
@@ -178,15 +204,22 @@ On the next `getChildren(undefined)` call, `expandStore.isExpanded(rootPath)` is
 
 `sparseExplorer.collapseToFiltered` → `expandStore.collapseAll()` → `updateExpandContext()` → `provider.refresh()`.
 
-On the next `getChildren(undefined)`, `expandStore.isExpanded(rootPath)` is false, so `_getFilteredChildren` is used. The tree returns to showing only admitted paths.
+On the next `getChildren(undefined)`, `expandStore.isExpanded(rootPath)` is false, so `_getFilteredChildren` is used. The tree returns to showing only admitted paths. Admitted **folders** persist through this — they live in `AdmittedFolderStore`, not `ExpandStore`, so they keep rendering their full contents.
+
+### "Add a folder to the view"
+
+Two entry points, both landing in `AdmittedFolderStore.add(fsPath)`:
+
+- **From the built-in Explorer** — `sparseExplorer.addFolderFromExplorer(uri, uris)` receives the clicked resource (and, on a multi-selection, the whole list). It focuses the view, `stat`s each candidate, adds the directories, then reveals the last one expanded. This is the only way to add a folder with no open files.
+- **From a folder row in the view** — `sparseExplorer.addFolder(node)` adds the node's path. Offered on `seDir.filtered` and `seDir.workspaceRoot` rows.
+
+`add()` fires `onDidChange → provider.refresh()`. Because `AdmittedFolderStore.paths` is unioned into `computeVisiblePaths`, the folder (and its ancestors) now appears; because `_scopeFor` treats it as expanded, its subtree renders every file. The follow-up `treeView.reveal(node, { expand: true })` opens the row (a changed `collapsibleState` alone can't re-open an already-known row).
 
 ### "Remove from View"
 
-`sparseExplorer.ejectItem(node)` → `admittedStore.eject(node.uri.fsPath)` → `onDidChange` → `provider.refresh()`.
+For a **file**: `sparseExplorer.ejectItem(node)` → `admittedStore.eject(node.uri.fsPath)` → `onDidChange` → `provider.refresh()`. `_getFilteredChildren` no longer includes it in the `computeVisiblePaths` result, so the item disappears.
 
-Because `ejectItem` removes a path from `admittedStore`, `_getFilteredChildren` will no longer include it in the `computeVisiblePaths` result. The item disappears from the tree.
-
-"Remove from View" is hidden when `sparseExplorer.hasExpanded` is true (the `when` condition in `package.json` includes `!sparseExplorer.hasExpanded`). In expanded mode, `_getExpandedChildren` reads from disk and ignores `admittedStore`, so ejecting a file would be a silent no-op.
+For an **admitted folder** (`node.isDirectory`): the same command clears any session filter (`expandStore.collapse`) and calls `admittedFolderStore.remove(node.uri.fsPath)`. The folder reverts to filtered rendering — it vanishes unless it still anchors admitted files beneath it. A single-folder workspace root, which has no row of its own, is instead removed via the palette command `sparseExplorer.removeAdmittedFolder` (a QuickPick, gated by the `sparseExplorer.hasAdmittedFolders` context).
 
 ---
 
@@ -194,13 +227,13 @@ Because `ejectItem` removes a path from `admittedStore`, `_getFilteredChildren` 
 
 `FilteredExplorerProvider` implements `getParent()` so that `treeView.reveal()` works. VS Code calls `getParent()` repeatedly to walk from a leaf node up to the root, then expands each node in the chain to make the target visible.
 
-`_computeNodeContext(dirPath)` is the helper that determines whether a given directory is inside an "expanded" subtree by walking up the ancestor chain and checking `expandStore.isExpanded()` at each level.
+`_scopeFor(dirPath)` is the helper that determines whether a given directory is inside an "expanded" subtree by walking up the ancestor chain and checking `expandStore.isExpanded()` **or** `admittedFolderStore.has()` at each level.
 
 ---
 
 ## `computeVisiblePaths` (`src/utils/pathUtils.ts`)
 
-Takes the set of admitted file paths and returns a flat `Set` of every path that needs a row in the tree:
+Takes the set of anchor paths — admitted files unioned with admitted folders — and returns a flat `Set` of every path that needs a row in the tree:
 
 ```
 for each admitted path:
@@ -214,6 +247,10 @@ This is called on every `_getFilteredChildren` invocation, so it always reflects
 
 ## `readDir` and `hasMatchingDescendant` (`src/utils/fsUtils.ts`)
 
-`readDir` wraps `fs.readdir` and filters out dotfiles (except `.env`). Returns `{ name, fullPath, isDirectory }` entries.
+`readDir` wraps `fs.readdir` and returns `{ name, fullPath, isDirectory }` for every entry except `.`/`..` — **including** dotfiles and dot-directories. It is intentionally unaware of `files.exclude`: the filtered view relies on that so an explicitly-opened dotfile (e.g. an admitted `.env`) still appears. Hiding of "classic hidden files" happens one layer up, in `_getExpandedChildren` (see below).
 
-`hasMatchingDescendant(dir, filter)` recursively walks the filesystem from `dir` to find any file whose name contains `filter` (case-insensitive). It is used by `_getExpandedChildren` to decide whether to include a subdirectory when a filter is active.
+`hasMatchingDescendant(dir, filter, isExcluded?)` recursively walks the filesystem from `dir` to find any file whose name contains `filter` (case-insensitive), skipping any path for which `isExcluded` returns true. It is used by `_getExpandedChildren` to decide whether to include a subdirectory when a filter is active.
+
+## `files.exclude` filtering (`src/utils/excludeUtils.ts`)
+
+`buildExcludeMatcher(exclude)` turns a VS Code `files.exclude` map into a predicate over workspace-relative POSIX paths; `globToRegExp(glob)` is the underlying minimal glob→RegExp (handles `**`, `*`, `?`, `{a,b}`; treats character classes as literals; ignores conditional `{ "when": … }` and `false` entries). The provider's `_excludePredicateFor(dirPath)` reads the effective config for the containing workspace folder (`getConfiguration('files', folderUri).get('exclude')` — which already merges VS Code's defaults like `**/.DS_Store` and `**/.git`) and adapts it to absolute paths. This keeps the extension consistent with the built-in Explorer and honours any user customisation, with no runtime dependency.

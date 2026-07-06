@@ -25,6 +25,10 @@ class EventEmitter<T> {
   }
 }
 
+// Effective `files.exclude` returned by the mocked getConfiguration('files').get('exclude').
+// Tests set this via vscode.__setFilesExclude(...); it defaults to {} (nothing hidden).
+let filesExclude: Record<string, unknown> = {};
+
 const vscode = {
   Uri: {
     file: (p: string) => ({ fsPath: p }),
@@ -38,6 +42,13 @@ const vscode = {
   },
   workspace: {
     workspaceFolders: undefined as unknown,
+    getConfiguration: (section?: string) => ({
+      get: (key: string, def?: unknown) =>
+        section === 'files' && key === 'exclude' ? filesExclude : def,
+    }),
+  },
+  __setFilesExclude: (value: Record<string, unknown>) => {
+    filesExclude = value;
   },
 };
 

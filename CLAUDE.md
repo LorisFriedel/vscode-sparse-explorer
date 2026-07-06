@@ -5,12 +5,19 @@ Guidance for working in this repo. For a full component walkthrough see `ARCHITE
 ## What this is
 
 A VS Code extension ("Sparse Explorer") providing a tree view that shows only open
-tabs + explicitly-admitted files, with a per-directory "Show All Files" (expanded)
-mode and a recursive filename filter. State lives in:
+tabs + explicitly-admitted files + explicitly-added folders, with a per-directory
+"Show All Files" (expanded) mode and a recursive filename filter. State lives in:
 
 - `AdmittedStore` — persisted set of file paths shown in filtered mode (`workspaceState`).
+- `AdmittedFolderStore` — persisted set of folders the user explicitly added; each renders
+  all its files (always-expanded) and survives restarts (`workspaceState`). Added from the
+  built-in Explorer's context menu or from a folder row in the view; removed via "Remove
+  from View" (or the palette "Remove Added Folder..." for folders with no row of their own).
 - `ExpandStore` — session-only set of expanded directories + per-dir filters.
 - `FilteredExplorerProvider` — the `TreeDataProvider`; the single source of truth for what renders.
+  A directory renders "expanded" (all files) when `ExpandStore.isExpanded` **or**
+  `AdmittedFolderStore.has` is true for it; admitted folders are also visibility anchors, so
+  they (and their ancestors) appear even with no open files.
 
 ## Build / test workflow
 
@@ -91,12 +98,21 @@ These caused a long debugging session; respect them.
 
 ## Conventions
 
-- `contextValue` strings (`seDir.filtered`, `seDir.expanded`, `seDir.inExpanded`,
-  `seDir.workspaceRoot*`, `seFile`) drive all menu `when` clauses in `package.json`. Keep the two
-  in sync when adding states.
+- `contextValue` strings (`seDir.filtered`, `seDir.expanded`, `seDir.expandedFiltered`,
+  `seDir.inExpanded`, `seDir.admitted`, `seDir.admitted.filtered`, `seDir.workspaceRoot*`
+  — including `seDir.workspaceRoot.admitted[.filtered]` — and `seFile`) drive all menu `when`
+  clauses in `package.json`. Keep the two in sync when adding states. The `.admitted` states
+  mark a persisted folder (`AdmittedFolderStore`); their menu offers "Remove from View"
+  (un-admit) rather than the session-only "Collapse to Filtered View".
 - Eject ("Remove from View") both de-admits the path *and* closes its tab, so an ejected file
   isn't silently re-admitted when it regains focus.
-- `readDir` (in `utils/fsUtils.ts`) shows all entries including dotfiles and dot-directories.
+- `readDir` (in `utils/fsUtils.ts`) shows all entries including dotfiles and dot-directories;
+  it is deliberately unaware of `files.exclude`. The **filtered** view therefore still shows
+  any dotfile you explicitly opened (e.g. an admitted `.env`). The **expanded / added-folder**
+  view (`_getExpandedChildren`) is where the built-in Explorer's `files.exclude` globs are
+  applied — hiding `.DS_Store`, `.git`, etc. Matching lives in `utils/excludeUtils.ts`
+  (`buildExcludeMatcher` / `globToRegExp`, a minimal glob→RegExp for `**`, `*`, `?`, `{a,b}`);
+  the provider reads the config per workspace folder in `_excludePredicateFor`.
 
 ## Git
 

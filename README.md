@@ -10,6 +10,7 @@ A dedicated activity bar icon opens the view alongside the default Explorer — 
 
 - **Automatic admission** — files appear when you open a tab and stay visible after the tab closes
 - **Explicit removal** — remove a file from the view with one click; it returns if you open it again
+- **Add a folder** — explicitly add a folder (from this view or VS Code's built-in Explorer) so it always shows every file it contains, persisted across restarts — even folders with no open files. Hidden files that the built-in Explorer omits via `files.exclude` (e.g. `.DS_Store`, `.git`) are omitted here too
 - **Expand a directory** — temporarily reveal all its descendants to browse or open files
 - **Filter within an expanded directory** — type a string to recursively narrow the expanded view by filename
 - **Multi-root workspace support** — works with both single-folder and `.code-workspace` multi-root setups
@@ -33,12 +34,14 @@ Files removed from the view will reappear automatically the next time you open a
 
 | Action | How |
 |---|---|
-| Show all files in a directory | Hover → click **Show All Files**, or right-click → **Show All Files** |
+| Add a folder so it always shows all its files | Right-click a folder in VS Code's built-in Explorer → **Add Folder to Sparse Explorer**, or right-click a folder here → **Add Folder (Show All Files)** |
+| Remove an added folder | Hover → click `×`, or right-click → **Remove from View** (for a folder with no row of its own, run **Sparse Explorer: Remove Added Folder...** from the Command Palette) |
+| Show all files in a directory (this session only) | Hover → click **Show All Files**, or right-click → **Show All Files** |
 | Filter within an expanded directory | Hover → click the search icon, or right-click → **Filter Files...** |
 | Clear an active filter | Hover → click **Clear Filter**, or right-click → **Clear Filter** |
 | Return to the sparse view | Hover → click **Collapse to Filtered View**, or right-click → **Collapse to Filtered View** |
 
-Admitted file paths are persisted to workspace state. Expanded directories and active filters reset when VS Code closes.
+Admitted file paths **and explicitly-added folders** are persisted to workspace state. Session "Show All Files" expansions and active filters reset when VS Code closes.
 
 ---
 
@@ -88,12 +91,14 @@ Press `F5` in VS Code to open an **Extension Development Host** — a second VS 
 src/
   extension.ts                  — entry point, command registration
   TabTracker.ts                 — reads open tabs from vscode.window.tabGroups; emits newly-opened paths
-  AdmittedStore.ts              — persists admitted paths to workspaceState; handles eject
+  AdmittedStore.ts              — persists admitted file paths to workspaceState; handles eject
+  AdmittedFolderStore.ts        — persists explicitly-added folders (shown in full) to workspaceState
   ExpandStore.ts                — session-only expanded dirs and per-dir filters
   FilteredExplorerProvider.ts   — TreeDataProvider: the core tree rendering logic
   utils/
     pathUtils.ts                — computes which ancestor dirs are visible
     fsUtils.ts                  — async readdir and recursive descendant matching
+    excludeUtils.ts             — files.exclude glob matcher for expanded/added-folder views
 resources/
   sparse-explorer.svg           — activity bar icon
 ```

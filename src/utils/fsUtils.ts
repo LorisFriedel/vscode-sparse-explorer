@@ -22,14 +22,19 @@ export async function readDir(dirPath: string): Promise<FsEntry[]> {
   }
 }
 
-export async function hasMatchingDescendant(dirPath: string, filter: string): Promise<boolean> {
+export async function hasMatchingDescendant(
+  dirPath: string,
+  filter: string,
+  isExcluded: (fullPath: string) => boolean = () => false,
+): Promise<boolean> {
   const lowerFilter = filter.toLowerCase();
   const entries = await readDir(dirPath);
   for (const entry of entries) {
+    if (isExcluded(entry.fullPath)) continue;
     if (!entry.isDirectory) {
       if (entry.name.toLowerCase().includes(lowerFilter)) return true;
     } else {
-      if (await hasMatchingDescendant(entry.fullPath, filter)) return true;
+      if (await hasMatchingDescendant(entry.fullPath, filter, isExcluded)) return true;
     }
   }
   return false;

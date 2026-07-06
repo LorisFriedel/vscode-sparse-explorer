@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { AdmittedFolderStore } from './AdmittedFolderStore';
 import { AdmittedStore } from './AdmittedStore';
 import { ExpandStore } from './ExpandStore';
 import { ExplorerNode, FilteredExplorerProvider } from './FilteredExplorerProvider';
@@ -10,7 +11,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const tabTracker = new TabTracker();
   const admittedStore = new AdmittedStore(context);
   const expandStore = new ExpandStore();
-  const provider = new FilteredExplorerProvider(tabTracker, admittedStore, expandStore);
+  const admittedFolderStore = new AdmittedFolderStore(context);
+  const provider = new FilteredExplorerProvider(
+    tabTracker,
+    admittedStore,
+    expandStore,
+    admittedFolderStore,
+  );
 
   let clipboard: { uri: vscode.Uri; mode: 'cut' | 'copy' } | undefined;
 
@@ -26,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
   tabTracker.onDidChange(() => provider.refresh(), null, context.subscriptions);
 
   admittedStore.onDidChange(() => provider.refresh(), null, context.subscriptions);
+  admittedFolderStore.onDidChange(() => provider.refresh(), null, context.subscriptions);
 
   function _expandedRootPath(): string | undefined {
     return (vscode.workspace.workspaceFolders ?? []).find(f => expandStore.isExpanded(f.uri.fsPath))
@@ -66,7 +74,18 @@ export function activate(context: vscode.ExtensionContext): void {
     void vscode.commands.executeCommand('setContext', 'sparseExplorer.rootHasFilter', rootHasFilter);
   }
 
+  // Gates the palette-only "Remove Added Folder..." command so it's hidden when there's
+  // nothing to remove.
+  function updateFolderContext(): void {
+    void vscode.commands.executeCommand(
+      'setContext',
+      'sparseExplorer.hasAdmittedFolders',
+      admittedFolderStore.paths.size > 0,
+    );
+  }
+
   updateExpandContext();
+  updateFolderContext();
   void vscode.commands.executeCommand('setContext', 'sparseExplorer.hasClipboard', false);
 
   // VS Code ignores a changed TreeItem.collapsibleState on an already-rendered row
@@ -249,6 +268,21 @@ export function activate(context: vscode.ExtensionContext): void {
       : [];
   }
 
+  function isWorkspaceRootPath(fsPath: string): boolean {
+    return (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.fsPath === fsPath);
+  }
+
+  // Persistently add a folder so it shows every file it contains. add() fires
+  // onDidChange → provider.refresh(); the reveal then opens the row (collapsibleState
+  // alone can't re-open an already-known row — see the TreeView gotchas in CLAUDE.md).
+  async function admitFolder(fsPath: string): Promise<void> {
+    admittedFolderStore.add(fsPath);
+    updateFolderContext();
+    await revealExpanded([
+      { uri: vscode.Uri.file(fsPath), isDirectory: true, isWorkspaceRoot: isWorkspaceRootPath(fsPath) },
+    ]);
+  }
+
   const cmds: vscode.Disposable[] = [
     vscode.commands.registerCommand('sparseExplorer.refresh', () => {
       provider.refresh();
@@ -256,6 +290,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('sparseExplorer.ejectItem', async (node: ExplorerNode) => {
       const fsPath = node.uri.fsPath;
+
+      // A directory row in the view is an explicitly-added folder; "Remove from View"
+      // un-admits it and drops any session filter layered on it. (Its files may still
+      // appear afterwards if they were independently opened/admitted.)
+      if (node.isDirectory) {
+        expandStore.collapse(fsPath);
+        admittedFolderStore.remove(fsPath);
+        updateFolderContext();
+        updateExpandContext();
+        provider.refresh();
+        return;
+      }
+
       admittedStore.eject(fsPath);
 
       // Keep the view and the open tabs consistent: removing a file from the view
@@ -267,6 +314,81 @@ export function activate(context: vscode.ExtensionContext): void {
       if (tabs.length > 0) {
         await vscode.window.tabGroups.close(tabs);
       }
+    }),
+
+    // --- Add / remove explicitly-shown folders ---
+
+    // From within the Sparse Explorer: promote a visible folder to show all its files.
+    vscode.commands.registerCommand('sparseExplorer.addFolder', async (node?: ExplorerNode) => {
+      if (!node || !node.isDirectory) return;
+      await admitFolder(node.uri.fsPath);
+    }),
+
+    // From VS Code's built-in Explorer: add any folder (even one with no open files).
+    // The built-in Explorer passes the clicked resource plus, on a multi-selection, the
+    // full list as the second argument.
+    vscode.commands.registerCommand(
+      'sparseExplorer.addFolderFromExplorer',
+      async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+        const candidates = (uris && uris.length > 0 ? uris : uri ? [uri] : []).filter(
+          u => u.scheme === 'file' && !!vscode.workspace.getWorkspaceFolder(u),
+        );
+        if (candidates.length === 0) return;
+
+        // Make the view visible first so the reveal below can select the folder.
+        await vscode.commands
+          .executeCommand('sparseExplorer.view.focus')
+          .then(() => undefined, () => undefined);
+
+        let lastAdded: vscode.Uri | undefined;
+        for (const u of candidates) {
+          let isDir = false;
+          try {
+            const stat = await vscode.workspace.fs.stat(u);
+            isDir = (stat.type & vscode.FileType.Directory) !== 0;
+          } catch {
+            isDir = false;
+          }
+          if (!isDir) continue;
+          admittedFolderStore.add(u.fsPath);
+          lastAdded = u;
+        }
+        if (!lastAdded) return;
+        updateFolderContext();
+        await revealExpanded([
+          {
+            uri: lastAdded,
+            isDirectory: true,
+            isWorkspaceRoot: isWorkspaceRootPath(lastAdded.fsPath),
+          },
+        ]);
+      },
+    ),
+
+    // Escape hatch: remove added folders from the command palette. Reaches folders with
+    // no removable row of their own — notably an admitted single-folder workspace root.
+    vscode.commands.registerCommand('sparseExplorer.removeAdmittedFolder', async () => {
+      const folders = [...admittedFolderStore.paths];
+      if (folders.length === 0) {
+        void vscode.window.showInformationMessage('Sparse Explorer: no added folders to remove.');
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        folders.map(fsPath => ({
+          label: path.basename(fsPath),
+          description: vscode.workspace.asRelativePath(fsPath),
+          fsPath,
+        })),
+        { placeHolder: 'Select folders to remove from the Sparse Explorer', canPickMany: true },
+      );
+      if (!picked || picked.length === 0) return;
+      for (const item of picked) {
+        expandStore.collapse(item.fsPath);
+        admittedFolderStore.remove(item.fsPath);
+      }
+      updateFolderContext();
+      updateExpandContext();
+      provider.refresh();
     }),
 
     // --- Title-bar (whole tree) ---
@@ -409,7 +531,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       admittedStore.renamePrefix(oldUri.fsPath, newUri.fsPath);
       expandStore.renamePrefix(oldUri.fsPath, newUri.fsPath);
+      admittedFolderStore.renamePrefix(oldUri.fsPath, newUri.fsPath);
       updateExpandContext();
+      updateFolderContext();
       await revealNode({ uri: newUri, isDirectory: node.isDirectory, isWorkspaceRoot: false });
     }),
 
@@ -431,7 +555,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       admittedStore.ejectPrefix(fsPath);
       expandStore.collapsePrefix(fsPath);
+      admittedFolderStore.removePrefix(fsPath);
       updateExpandContext();
+      updateFolderContext();
     }),
 
     // --- Open variants ---
@@ -505,6 +631,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (clipboard.mode === 'cut') {
         admittedStore.renamePrefix(source.fsPath, destUri.fsPath);
         expandStore.renamePrefix(source.fsPath, destUri.fsPath);
+        admittedFolderStore.renamePrefix(source.fsPath, destUri.fsPath);
+        updateFolderContext();
         clipboard = undefined;
         void vscode.commands.executeCommand('setContext', 'sparseExplorer.hasClipboard', false);
       } else {

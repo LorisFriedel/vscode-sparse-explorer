@@ -1,7 +1,7 @@
 {
   "name": "vscode-sparse-explorer",
   "displayName": "VSCode Sparse Explorer",
-  "description": "A sparse explorer showing only open tabs and pinned files, with expand-all and recursive filter per directory",
+  "description": "A sparse explorer showing only open tabs and explicitly-added folders, with expand-all and recursive filter per directory",
   "version": "0.0.13",
   "publisher": "eric-mountain",
   "repository": {
@@ -42,6 +42,22 @@
         "command": "sparseExplorer.ejectItem",
         "title": "Remove from View",
         "icon": "$(close)",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.addFolder",
+        "title": "Add Folder (Show All Files)",
+        "icon": "$(add)",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.addFolderFromExplorer",
+        "title": "Add Folder to Sparse Explorer",
+        "category": "Sparse Explorer"
+      },
+      {
+        "command": "sparseExplorer.removeAdmittedFolder",
+        "title": "Remove Added Folder...",
         "category": "Sparse Explorer"
       },
       {
@@ -246,8 +262,13 @@
       ],
       "view/item/context": [
         {
+          "command": "sparseExplorer.addFolder",
+          "when": "view == sparseExplorer.view && (viewItem == 'seDir.filtered' || viewItem == 'seDir.workspaceRoot')",
+          "group": "inline@0"
+        },
+        {
           "command": "sparseExplorer.ejectItem",
-          "when": "view == sparseExplorer.view && viewItem == 'seFile'",
+          "when": "view == sparseExplorer.view && (viewItem == 'seFile' || viewItem == 'seDir.admitted' || viewItem == 'seDir.admitted.filtered' || viewItem == 'seDir.workspaceRoot.admitted' || viewItem == 'seDir.workspaceRoot.admitted.filtered')",
           "group": "inline@1"
         },
         {
@@ -257,12 +278,12 @@
         },
         {
           "command": "sparseExplorer.filterDir",
-          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expanded' || viewItem == 'seDir.workspaceRoot.expanded')",
+          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expanded' || viewItem == 'seDir.workspaceRoot.expanded' || viewItem == 'seDir.admitted' || viewItem == 'seDir.workspaceRoot.admitted')",
           "group": "inline@2"
         },
         {
           "command": "sparseExplorer.clearFilterDir",
-          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expandedFiltered' || viewItem == 'seDir.workspaceRoot.expandedFiltered')",
+          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expandedFiltered' || viewItem == 'seDir.workspaceRoot.expandedFiltered' || viewItem == 'seDir.admitted.filtered' || viewItem == 'seDir.workspaceRoot.admitted.filtered')",
           "group": "inline@2"
         },
         {
@@ -271,8 +292,13 @@
           "group": "inline@3"
         },
         {
+          "command": "sparseExplorer.addFolder",
+          "when": "view == sparseExplorer.view && (viewItem == 'seDir.filtered' || viewItem == 'seDir.workspaceRoot')",
+          "group": "1_actions@0"
+        },
+        {
           "command": "sparseExplorer.ejectItem",
-          "when": "view == sparseExplorer.view && viewItem == 'seFile'",
+          "when": "view == sparseExplorer.view && (viewItem == 'seFile' || viewItem == 'seDir.admitted' || viewItem == 'seDir.admitted.filtered' || viewItem == 'seDir.workspaceRoot.admitted' || viewItem == 'seDir.workspaceRoot.admitted.filtered')",
           "group": "1_actions@1"
         },
         {
@@ -282,12 +308,12 @@
         },
         {
           "command": "sparseExplorer.filterDir",
-          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expanded' || viewItem == 'seDir.expandedFiltered' || viewItem == 'seDir.workspaceRoot.expanded' || viewItem == 'seDir.workspaceRoot.expandedFiltered')",
+          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expanded' || viewItem == 'seDir.expandedFiltered' || viewItem == 'seDir.workspaceRoot.expanded' || viewItem == 'seDir.workspaceRoot.expandedFiltered' || viewItem == 'seDir.admitted' || viewItem == 'seDir.admitted.filtered' || viewItem == 'seDir.workspaceRoot.admitted' || viewItem == 'seDir.workspaceRoot.admitted.filtered')",
           "group": "1_actions@1"
         },
         {
           "command": "sparseExplorer.clearFilterDir",
-          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expandedFiltered' || viewItem == 'seDir.workspaceRoot.expandedFiltered')",
+          "when": "view == sparseExplorer.view && (viewItem == 'seDir.expandedFiltered' || viewItem == 'seDir.workspaceRoot.expandedFiltered' || viewItem == 'seDir.admitted.filtered' || viewItem == 'seDir.workspaceRoot.admitted.filtered')",
           "group": "1_actions@2"
         },
         {
@@ -391,10 +417,29 @@
           "group": "5_os@3"
         }
       ],
+      "explorer/context": [
+        {
+          "command": "sparseExplorer.addFolderFromExplorer",
+          "when": "explorerResourceIsFolder",
+          "group": "sparseExplorer@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "sparseExplorer.ejectItem",
           "when": "false"
+        },
+        {
+          "command": "sparseExplorer.addFolder",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.addFolderFromExplorer",
+          "when": "false"
+        },
+        {
+          "command": "sparseExplorer.removeAdmittedFolder",
+          "when": "sparseExplorer.hasAdmittedFolders"
         },
         {
           "command": "sparseExplorer.expandAll",
@@ -517,7 +562,7 @@
     "viewsWelcome": [
       {
         "view": "sparseExplorer.view",
-        "contents": "No open tabs or pinned files.\n\nOpen a file to see it here, or right-click a file in the Explorer and pin it."
+        "contents": "No files in view yet.\n\nOpen a file to see it here, or right-click a folder in the Explorer and choose \"Add Folder to Sparse Explorer\" to show all of its files."
       }
     ]
   },
